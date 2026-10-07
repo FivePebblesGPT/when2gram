@@ -1,0 +1,10 @@
+services:
+  bot:
+    build: .
+    restart: unless-stopped
+    env_file: .env
+    volumes:
+      - when2gram-data:/data
+
+volumes:
+  when2gram-data:
