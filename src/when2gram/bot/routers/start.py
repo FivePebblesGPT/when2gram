@@ -1,0 +1,80 @@
+from aiogram import F, Router
+from aiogram.filters import Command, CommandStart
+from aiogram.fsm.context import FSMContext
+from aiogram.fsm.state import State, StatesGroup
+from aiogram.types import CallbackQuery, Message
+
+from when2gram.bot.keyboards.availability import availability_keyboard
+from when2gram.domain.availability import SLOTS_PER_DAY, is_selected, toggle_slot
+
+router = Router(name=__name__)
+
+
+class GridDemo(StatesGroup):
+    selecting = State()
+
+
+@router.message(CommandStart())
+async def start(message: Message) -> None:
+    await message.answer(
+        "When2Gram is a Telegram-native group availability planner.\n\n"
+        "Use /grid to preview the 09:00–24:00, 15-minute availability selector."
+    )
+
+
+@router.message(Command("grid"))
+async def grid_demo(message: Message, state: FSMContext) -> None:
+    await state.set_state(GridDemo.selecting)
+    await state.set_data({"mask": 0})
+    await message.answer(
+        "Availability grid prototype — tap cells to toggle them.",
+        reply_markup=availability_keyboard([0] * SLOTS_PER_DAY, respondent_count=1),
+    )
+
+
+@router.callback_query(F.data == "noop")
+async def noop(callback: CallbackQuery) -> None:
+    await callback.answer()
+
+
+@router.callback_query(GridDemo.selecting, F.data.startswith("slot:"))
+async def toggle_grid_slot(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None or callback.data is None:
+        await callback.answer()
+        return
+
+    try:
+        slot = int(callback.data.partition(":")[2])
+    except ValueError:
+        await callback.answer("Invalid slot", show_alert=True)
+        return
+
+    data = await state.get_data()
+    mask = toggle_slot(int(data.get("mask", 0)), slot)
+    await state.update_data(mask=mask)
+
+    counts = [1 if is_selected(mask, index) else 0 for index in range(SLOTS_PER_DAY)]
+    await callback.message.edit_reply_markup(
+        reply_markup=availability_keyboard(counts, respondent_count=1, selected_mask=mask)
+    )
+    await callback.answer()
+
+
+@router.callback_query(GridDemo.selecting, F.data == "grid:clear")
+async def clear_grid(callback: CallbackQuery, state: FSMContext) -> None:
+    if callback.message is None:
+        await callback.answer()
+        return
+    await state.update_data(mask=0)
+    await callback.message.edit_reply_markup(
+        reply_markup=availability_keyboard([0] * SLOTS_PER_DAY, respondent_count=1)
+    )
+    await callback.answer("Cleared")
+
+
+@router.callback_query(GridDemo.selecting, F.data == "grid:done")
+async def finish_grid(callback: CallbackQuery, state: FSMContext) -> None:
+    await state.clear()
+    await callback.answer("Saved")
+    if callback.message is not None:
+        await callback.message.edit_text("Grid prototype saved. Use /grid to try again.")
