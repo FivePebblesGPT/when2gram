@@ -81,7 +81,12 @@ def upgrade() -> None:
         sa.PrimaryKeyConstraint("id"),
         sa.UniqueConstraint("inline_message_id"),
     )
-    op.create_index(op.f("ix_inline_invites_event_id"), "inline_invites", ["event_id"], unique=False)
+    op.create_index(
+        op.f("ix_inline_invites_event_id"),
+        "inline_invites",
+        ["event_id"],
+        unique=False,
+    )
 
 
 def downgrade() -> None:
